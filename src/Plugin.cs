@@ -21,9 +21,9 @@ public sealed class LyricMotionPlugin : INoctisPlugin
     public PluginInfo Info { get; } = new(
         Id: "dev.moshi.lyricmotion",
         Name: "Lyric Motion",
-        Version: "1.2.2",
+        Version: "1.3.0",
         Author: "moshi",
-        Description: "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.");
+        Description: "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them, the motion passing from one word to the next without a break; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.");
 
     public void Initialize(IPluginHost host)
     {

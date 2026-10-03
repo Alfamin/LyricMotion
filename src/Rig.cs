@@ -28,6 +28,9 @@ internal sealed class WordRig : IDisposable
     private readonly bool _isLast;
     private readonly bool _isBackground;
     private readonly double _durationMs;
+    // How long the words before and after this one are sung (below zero: there is none).
+    private readonly double _beforeMs, _afterMs;
+    private readonly bool _afterIsLast;
 
     private readonly ScaleTransform _scale = new(1, 1);
     private readonly TranslateTransform _move = new();
@@ -61,12 +64,23 @@ internal sealed class WordRig : IDisposable
     // True for a redrawn word of a finished line that only waits to be handed back.
     private bool _parked;
 
-    public WordRig(object word, WordAccess access, Panel cell, int index, int count, bool isBackground, Tuning tuning, bool still)
+    /// <summary>How long a word is sung, in milliseconds (a word without a time of its own counts as an ordinary one).</summary>
+    public static double DurationOf(object word, WordAccess access)
+    {
+        var held = access.HeldMs?.Invoke(word) ?? 0;
+        return held > 1 ? held : 320;
+    }
+
+    public WordRig(object word, WordAccess access, Panel cell, int index, int count, bool isBackground, Tuning tuning, bool still,
+        double beforeMs, double afterMs)
     {
         _word = word;
         _access = access;
         _cell = cell;
         _isLast = index == count - 1;
+        _beforeMs = beforeMs;
+        _afterMs = afterMs;
+        _afterIsLast = index == count - 2;
         _isBackground = isBackground;
         _still = still;
         _fillFromRight = tuning.RightToLeft && Script.Of(access.Text?.Invoke(word)) == TextDirection.RightToLeft;
@@ -91,8 +105,7 @@ internal sealed class WordRig : IDisposable
             }
         }
 
-        var held = access.HeldMs?.Invoke(word) ?? 0;
-        _durationMs = held > 1 ? held : 320;
+        _durationMs = DurationOf(word, access);
         if (_still) return;   // no motion on this list: only the direction of the fill is looked after
 
         // Replaces Noctis' own transform on the cell, including the one-step "pop" it
@@ -184,7 +197,7 @@ internal sealed class WordRig : IDisposable
         if (_inner is null || _base is null || _sweep is null) return;
         _letterAttempts++;
         var held = _durationMs >= tuning.HeldMs;
-        var split = tuning.LetterWave && tuning.Grow(_durationMs, _isLast) >= Tuning.LetterGrowFloor;
+        var split = tuning.LetterWave;
         try
         {
             _letters = LetterLayer.TryCreate(_inner, _base, _sweep, _glow, tuning.Glow && held, split);
@@ -284,7 +297,13 @@ internal sealed class WordRig : IDisposable
         // 1 when it is back to its own size.
         var held = _durationMs >= tuning.HeldMs;
         var amount = tuning.Grow(_durationMs, _isLast);
-        var settle = Curves.Clamp01((_clock - Tuning.SettleStartSec(durationSec)) / Tuning.SettleSec(durationSec));
+        var amountBefore = _beforeMs < 0 ? amount : tuning.Grow(_beforeMs, false);
+        var amountAfter = _afterMs < 0 ? amount : tuning.Grow(_afterMs, _afterIsLast);
+        // The first letter starts to relax at settleStart, the last one a little later.
+        var settleStart = Tuning.SettleStartSec(durationSec);
+        var settleSec = Tuning.SettleSec(durationSec);
+        var settleSpread = _letters is not null && tuning.LetterWave ? Tuning.SettleSpreadSec(durationSec) : 0;
+        var settle = Curves.Clamp01((_clock - settleStart - settleSpread) / settleSec);
 
         // How far the word has come up: with the fill, but never faster than a quick
         // word can be followed by the eye (it then finishes just after its note).
@@ -299,11 +318,13 @@ internal sealed class WordRig : IDisposable
             if (lineActive) _parked = false;
             if (!_parked)
             {
-                var busy = _letters.Step(dt, progress, reach, amount, held ? tuning.HeldGlow(_durationMs, _isLast) : 0,
-                    settle, lineKeep, arrive, durationSec, lineActive);
+                var busy = _letters.Step(dt, progress, reach, amount, amountBefore, amountAfter,
+                    held ? tuning.HeldGlow(_durationMs, _isLast) : 0,
+                    _clock, settleStart, settleSpread, settleSec, lineKeep, arrive, durationSec, lineActive);
                 // Still coming up or playing out after the note, or fading with the line that was let go.
-                var playing = _seen && progress >= 1 && (arrive < 1 || (amount > 0 && settle < 1 && lineKeep > 0));
-                if (amount > 0 && !lineActive && _sinceRelease < Tuning.LineReleaseSec + 0.05 && !_letters.IsQuiet) playing = true;
+                var grows = amount > 0 || amountBefore > 0 || amountAfter > 0;
+                var playing = _seen && progress >= 1 && (arrive < 1 || (grows && settle < 1 && lineKeep > 0));
+                if (grows && !lineActive && _sinceRelease < Tuning.LineReleaseSec + 0.05 && !_letters.IsQuiet) playing = true;
                 busy |= playing;
 
                 // A line that is over is dimmed and blurred by Noctis from its very first
@@ -586,8 +607,15 @@ internal sealed class LineRig : IDisposable
 
         if (!sawLayer && (access.HasAnyWords?.Invoke(line) ?? false)) return null;
 
-        foreach (var c in cells)
-            words.Add(new WordRig(c.Word, c.Access, c.Cell, c.Index, c.Count, c.Background, tuning, still));
+        for (var i = 0; i < cells.Count; i++)
+        {
+            // The words sung before and after it, in the same row of words.
+            var c = cells[i];
+            double beforeMs = -1, afterMs = -1;
+            if (i > 0 && cells[i - 1].Index == c.Index - 1) beforeMs = WordRig.DurationOf(cells[i - 1].Word, cells[i - 1].Access);
+            if (i + 1 < cells.Count && cells[i + 1].Index == c.Index + 1) afterMs = WordRig.DurationOf(cells[i + 1].Word, cells[i + 1].Access);
+            words.Add(new WordRig(c.Word, c.Access, c.Cell, c.Index, c.Count, c.Background, tuning, still, beforeMs, afterMs));
+        }
         var rig = new LineRig(line, access, container, words);
 
         // What Noctis may blur the line through: everything from the words up to the line itself.

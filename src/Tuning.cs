@@ -57,6 +57,13 @@ internal sealed class Tuning
     /// </summary>
     public const double MinRiseSec = 0.16;
 
+    /// <summary>
+    /// The shortest time a letter takes to come up. It starts exactly when the fill
+    /// reaches it; in a quick word it is still on its way when the next letters, and the
+    /// next word, have started, so the motion passes along the line without a break.
+    /// </summary>
+    public const double LetterRiseSec = 0.2;
+
     // ── held words ──
 
     /// <summary>
@@ -93,6 +100,13 @@ internal sealed class Tuning
     /// has fully left it and a breath has passed.
     /// </summary>
     public static double SettleStartSec(double durationSec) => durationSec + Math.Min(0.2 * durationSec, 0.3) + 0.25;
+
+    /// <summary>
+    /// How much later the last letter of a word starts to relax than its first: about
+    /// the time the word took to sing, so the release moves along the line at the pace
+    /// of the singing, and no more than a moment for a long note.
+    /// </summary>
+    public static double SettleSpreadSec(double durationSec) => Math.Min(0.8 * durationSec, 0.4);
 
     /// <summary>How long a held word takes to relax: unhurried, longer for longer notes.</summary>
     public static double SettleSec(double durationSec) => Math.Clamp(0.8 + 0.3 * durationSec, 1.0, 1.5);

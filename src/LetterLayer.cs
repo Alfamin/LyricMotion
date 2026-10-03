@@ -55,7 +55,16 @@ internal sealed class LetterLayer : IDisposable
         public double Left, Top;
         /// <summary>How far ahead of the letter the fill's edge starts to light it, and how far past it finishes.</summary>
         public double Ahead, Behind;
+        /// <summary>Where the letter stands in its word: 0 at the start, 1 at the end.</summary>
+        public double At;
+        /// <summary>How much of its growth the letter takes from the word before and the word after its own.</summary>
+        public double FromBefore, FromAfter;
+        /// <summary>How far the letter has come up: with the fill, but never faster than the eye can follow.</summary>
+        public double Motion;
+        public bool MotionKnown;
         public double Light;
+        /// <summary>How much of its glow the letter still has: 1 until it starts to relax.</summary>
+        public double Keep;
         public double Rise;
         public double Grow;
         /// <summary>False while the letter has not moved yet and is still drawn as live text.</summary>
@@ -94,6 +103,14 @@ internal sealed class LetterLayer : IDisposable
     /// when the word is.
     /// </summary>
     private const double BandAheadEm = 0.3, BandBehindEm = 0.35;
+
+    /// <summary>
+    /// Where one word hands over to the next, the letters lean towards how much the
+    /// neighbour grows: at the very edge by this share, fading out over this distance
+    /// into the word (and never past its middle). A held word next to a quick one then
+    /// rises out of the line as a soft hill, not as a block.
+    /// </summary>
+    private const double EdgeShare = 0.35, EdgeEm = 0.9;
 
     /// <summary>How quickly a picture closes the distance to its pixel row (see Place), in Hz.</summary>
     private const double RowHz = 5;
@@ -313,10 +330,17 @@ internal sealed class LetterLayer : IDisposable
 
         var first = double.MaxValue;
         foreach (var letter in letters) first = Math.Min(first, letter.X);
+        var edge = Math.Min(EdgeEm * fontSize, 0.45 * (right - first));
         foreach (var letter in letters)
         {
             letter.Ahead = Math.Clamp(letter.X - first, 0, BandAheadEm * fontSize);
             letter.Behind = Math.Clamp(right - (letter.X + letter.Width), 0, BandBehindEm * fontSize);
+            letter.At = 0.5;
+            if (whole || edge <= 0) continue;
+            var centre = letter.X + letter.Width / 2;
+            letter.At = Curves.Clamp01((centre - first) / (right - first));
+            letter.FromBefore = EdgeShare * (1 - Curves.SmoothStep(0, 1, (centre - first) / edge));
+            letter.FromAfter = EdgeShare * (1 - Curves.SmoothStep(0, 1, (right - centre) / edge));
         }
 
         // Glows behind, the word in front.
@@ -596,15 +620,21 @@ internal sealed class LetterLayer : IDisposable
     /// <param name="progress">Noctis' sweep progress for the word (its own sentinels far before / after).</param>
     /// <param name="reach">How far a sung word floats up, in pixels.</param>
     /// <param name="grow">How much a letter grows when the fill has reached it (0.05 = 5%).</param>
+    /// <param name="growBefore">The same for the word before this one.</param>
+    /// <param name="growAfter">The same for the word after this one.</param>
     /// <param name="glowPeak">Opacity of a letter's glow at its fullest.</param>
-    /// <param name="settle">0 while the word is sung; runs to 1 afterwards as the word relaxes.</param>
+    /// <param name="clock">Seconds since the word began to be sung; it runs on after the word.</param>
+    /// <param name="settleStart">When, on that clock, the word's first letter starts to relax.</param>
+    /// <param name="settleSpread">How much later its last letter does.</param>
+    /// <param name="settleSec">How long a letter takes to relax.</param>
     /// <param name="lineKeep">1 while the line is current; runs to 0 as the line is let go.</param>
     /// <param name="arrive">For a word in one piece: 0 to 1 as it is sung (its rise, growth and glow follow it).</param>
     /// <param name="durationSec">How long the word is sung.</param>
     /// <param name="lineActive">True while the word's line is the current one.</param>
     /// <returns>True while a letter is still moving.</returns>
-    public bool Step(double dt, double progress, double reach, double grow, double glowPeak,
-        double settle, double lineKeep, double arrive, double durationSec, bool lineActive)
+    public bool Step(double dt, double progress, double reach, double grow, double growBefore, double growAfter, double glowPeak,
+        double clock, double settleStart, double settleSpread, double settleSec,
+        double lineKeep, double arrive, double durationSec, bool lineActive)
     {
         var placing = Place(dt, lineActive);
 
@@ -630,12 +660,12 @@ internal sealed class LetterLayer : IDisposable
         // What one frame of normal play moves the fill's edge by, as a share of the word.
         var pace = durationSec > 0 ? dt / durationSec : 1;
 
-        // What comes down again (the growth and the glow) does so for the whole word at
-        // once, and faster if the line itself is let go first. The glow is held a moment
-        // longer than the size: a change of light is noticed sooner than a change of a
-        // pixel or two, and to the eye this is what makes the two start together.
-        var keepSize = (1 - Curves.SmootherStep(settle)) * lineKeep;
-        var keepGlow = (1 - Curves.SmootherStep((settle - GlowHold) / (1 - GlowHold))) * lineKeep;
+        // The fill's edge for the motion: the same edge, but it runs on past the end of
+        // the word at the pace the word was sung at, so the last letters finish coming
+        // up while the next word has already begun. (The light does not: a word is fully
+        // lit exactly when it is over.)
+        var runOn = _first + (durationSec > 0 ? clock / durationSec : 1) * (_width - _first);
+        var most = dt / Tuning.LetterRiseSec;
 
         var moving = false;
         var glowing = false;
@@ -669,10 +699,41 @@ internal sealed class LetterLayer : IDisposable
                 _repaint = true;
             }
 
-            // One arrival drives the light, the size and the rise, so they cannot drift apart.
+            // The light is exactly the fill. The rise and the size start with it, on the
+            // note, and follow the same band, only never faster than the eye can follow
+            // and without being cut short where the word ends: across a run of quick
+            // words, and from one word to the next, the motion rolls on in one piece.
             letter.Light = Curves.SmoothStep(0, 1, arrived);
-            letter.Rise = _whole ? Curves.SmootherStep(arrived) : letter.Light;
-            letter.Grow = grow * letter.Rise * keepSize * (_whole ? Tuning.WholeWordShare : 1);
+            if (_whole) letter.Rise = Curves.SmootherStep(arrived);
+            else
+            {
+                var want = before ? 0 : Curves.Clamp01((runOn + letter.Ahead - letter.X)
+                                                       / (letter.Width + letter.Ahead + BandBehindEm * FontSize));
+                if (!letter.MotionKnown)
+                {
+                    letter.MotionKnown = true;
+                    letter.Motion = want;
+                }
+                else if (letter.Motion != want)
+                {
+                    letter.Motion += Math.Clamp(want - letter.Motion, -most, most);
+                    moving = true;
+                }
+                letter.Rise = Curves.SmoothStep(0, 1, letter.Motion);
+            }
+
+            // What comes down again (the growth and the glow) does so letter after letter
+            // in the order they were sung, unhurried, each on the same curve: the release
+            // passes through the word and on into the next one. It is faster if the line
+            // itself is let go first. The glow is held a moment longer than the size: a
+            // change of light is noticed sooner than a change of a pixel or two, and to
+            // the eye this is what makes the two start together.
+            var settle = Curves.Clamp01((clock - settleStart - (_whole ? 0 : letter.At) * settleSpread) / settleSec);
+            var keepSize = (1 - Curves.SmootherStep(settle)) * lineKeep;
+            letter.Keep = (1 - Curves.SmootherStep((settle - GlowHold) / (1 - GlowHold))) * lineKeep;
+
+            var amount = grow + letter.FromBefore * (growBefore - grow) + letter.FromAfter * (growAfter - grow);
+            letter.Grow = amount * letter.Rise * keepSize * (_whole ? Tuning.WholeWordShare : 1);
             total += letter.Grow * letter.Width;
         }
 
@@ -735,7 +796,7 @@ internal sealed class LetterLayer : IDisposable
 
             if (letter.Halo is not null)
             {
-                var glow = Math.Clamp(glowPeak * letter.Light * keepGlow, 0, 1);
+                var glow = Math.Clamp(glowPeak * letter.Light * letter.Keep, 0, 1);
                 if (Math.Abs(letter.Halo.Opacity - glow) > 0.002) letter.Halo.Opacity = glow;
                 if (glow > 0.002) glowing = true;
             }
@@ -758,8 +819,8 @@ internal sealed class LetterLayer : IDisposable
     /// </summary>
     public void Rehearse()
     {
-        Step(1.0 / 240, 0.5, 1.5, 0.02, 0.2, 0, 1, 0.5, 0.3, lineActive: false);
-        Step(1.0 / 240, 3, 1.5, 0.02, 0.2, 0.5, 0.5, 1, 0.3, lineActive: false);
+        Step(1.0 / 240, 0.5, 1.5, 0.02, 0.03, 0.01, 0.2, 0.15, 0.6, 0.2, 1, 1, 0.5, 0.3, lineActive: false);
+        Step(1.0 / 240, 3, 1.5, 0.02, 0.03, 0.01, 0.2, 1.1, 0.6, 0.2, 1, 0.5, 1, 0.3, lineActive: false);
         using var scrap = new RenderTargetBitmap(new PixelSize(8, 8), new Vector(96, 96));
         using var context = scrap.CreateDrawingContext();
         Paint(context);

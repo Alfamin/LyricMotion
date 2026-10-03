@@ -4,8 +4,11 @@ A plugin for the [Noctis](https://github.com/heartached/Noctis) music player tha
 lyrics move with the singing.
 
 - Each word floats up a little as it is sung and stays there until its line is over.
-- Its letters grow a touch, one after another, as the highlight reaches them, and shrink back when
-  the word is done.
+- Its letters grow a touch, one after another, as the highlight reaches them, and shrink back, one
+  after another, when the word is done.
+- The motion passes from one word to the next without a break: the last letters of a word are still
+  coming up when the next word starts, and where a word that grows a lot stands next to one that
+  does not, the letters at the border meet half-way.
 - Held words (sung for 0.6 seconds or longer) grow more and get a soft glow, then settle gently.
 - Persian, Arabic, Hebrew and other right-to-left lyrics are noticed by themselves and laid out from
   the right: words run from the right, lines sit against the right edge, each word fills in from the
