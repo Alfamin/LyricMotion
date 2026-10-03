@@ -99,10 +99,20 @@ internal sealed class Tuning
 
     /// <summary>
     /// How long a line's words take to come back down once the line is over. Noctis
-    /// dims the line over 0.5 s and glides it over 0.65 s; this sits between the two so
-    /// the words settle while the light goes.
+    /// blurs the line at once, dims it over 0.5 s and glides it to its new place, fast
+    /// at first: the words are down again while the line is still well on the move, so
+    /// that they can be handed back to Noctis there (see <see cref="HandBackSpeed"/>).
     /// </summary>
-    public const double LineReleaseSec = 0.6;
+    public const double LineReleaseSec = 0.2;
+
+    /// <summary>
+    /// A redrawn word of a finished line goes back to Noctis' own text only at a moment
+    /// when the change cannot be seen (the two are never quite the same there: a few
+    /// percent in brightness, a fraction of a pixel in place): in the first moments
+    /// after the line has ended, when Noctis blurs it, or later while the line is
+    /// travelling at least this fast, in text heights per second. Never while it rests.
+    /// </summary>
+    public const double HandBackSec = 0.05, HandBackSpeed = 1.5;
 
     public static Tuning From(IPluginSettings? settings)
     {

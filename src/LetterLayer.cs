@@ -243,7 +243,11 @@ internal sealed class LetterLayer : IDisposable
         {
             var element = piece.Text;
 
+            // Read the way Noctis' own text is: in a word that reads from the right, a
+            // bracket, a comma or a number stands on the other side of the letters than
+            // in one that reads from the left (and a bracket is turned round).
             var own = new TextLayout(element, typeface, fontSize: fontSize, foreground: brush,
+                flowDirection: @base.FlowDirection,
                 letterSpacing: @base.LetterSpacing, fontFeatures: @base.FontFeatures);
 
             double x = double.MaxValue, end = double.MinValue;
@@ -280,6 +284,7 @@ internal sealed class LetterLayer : IDisposable
                     Text = element,
                     FontWeight = @base.FontWeight,
                     FontStyle = @base.FontStyle,
+                    FlowDirection = @base.FlowDirection,
                     Foreground = brush,
                     Padding = new Thickness(room),
                     Opacity = 0,

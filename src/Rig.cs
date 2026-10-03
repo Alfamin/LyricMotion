@@ -58,6 +58,8 @@ internal sealed class WordRig : IDisposable
 
     private LetterLayer? _letters;
     private int _letterAttempts;
+    // True for a redrawn word of a finished line that only waits to be handed back.
+    private bool _parked;
 
     public WordRig(object word, WordAccess access, Panel cell, int index, int count, bool isBackground, Tuning tuning, bool still)
     {
@@ -215,9 +217,13 @@ internal sealed class WordRig : IDisposable
     /// <summary>The value the surface watches to notice a seek while the animation loop is idle.</summary>
     public double Progress => _access.Progress(_word);
 
+    /// <summary>The size the word's text is set in.</summary>
+    public double FontSize => _base?.FontSize ?? 46;
+
     /// <summary>Advances the word by one frame. Returns true while anything is still moving.</summary>
     /// <param name="lineBlurred">True when Noctis shows the word's line blurred (a line that is over).</param>
-    public bool Step(double dt, bool lineActive, bool lineBlurred, double pixelScale, Tuning tuning)
+    /// <param name="lineSpeed">How fast the line is travelling across the window, in text heights per second.</param>
+    public bool Step(double dt, bool lineActive, bool lineBlurred, double lineSpeed, double pixelScale, Tuning tuning)
     {
         if (_fillFromRight && _letters is null) FillFromRight();
         if (_still) return false;
@@ -230,6 +236,7 @@ internal sealed class WordRig : IDisposable
             // The window was resized or the lyrics changed colour: what was drawn is stale.
             _letters.Dispose();
             _letters = null;
+            _parked = false;
             if (_letterAttempts < 1000) _letterAttempts = 0;
         }
         if (_letters is null && lineActive && progress > -1.5 && progress < 1) TryBuildLetters(tuning);
@@ -289,19 +296,36 @@ internal sealed class WordRig : IDisposable
             // The word is moved by its redrawn letters (or its one redrawn piece) alone;
             // the cell stays put, so nothing is redrawn while it moves.
             SetCell(0, 1);
-            var busy = _letters.Step(dt, progress, reach, amount, held ? tuning.HeldGlow(_durationMs, _isLast) : 0,
-                settle, lineKeep, arrive, durationSec, lineActive);
-            // Still coming up or playing out after the note, or fading with the line that was let go.
-            if (_seen && progress >= 1 && (arrive < 1 || (amount > 0 && settle < 1 && lineKeep > 0))) busy = true;
-            if (amount > 0 && !lineActive && _sinceRelease < Tuning.LineReleaseSec + 0.05 && !_letters.IsQuiet) busy = true;
+            if (lineActive) _parked = false;
+            if (!_parked)
+            {
+                var busy = _letters.Step(dt, progress, reach, amount, held ? tuning.HeldGlow(_durationMs, _isLast) : 0,
+                    settle, lineKeep, arrive, durationSec, lineActive);
+                // Still coming up or playing out after the note, or fading with the line that was let go.
+                var playing = _seen && progress >= 1 && (arrive < 1 || (amount > 0 && settle < 1 && lineKeep > 0));
+                if (amount > 0 && !lineActive && _sinceRelease < Tuning.LineReleaseSec + 0.05 && !_letters.IsQuiet) playing = true;
+                busy |= playing;
 
-            // A line that is over is dimmed and blurred by Noctis from its very first
-            // frame. Under that blur a redrawn word cannot be told from Noctis' own
-            // text, and every image that is kept costs a little on every frame (a few
-            // lines' worth of them was enough to make frames late). So once the word
-            // has nothing left to play out it goes back to Noctis' text, still raised:
-            // the cell carries the two pixels from here on.
-            if (busy || lineActive || !lineBlurred || !_letters.IsQuiet) return busy;
+                // A line that is over is dimmed and blurred by Noctis from its very first
+                // frame. Under that blur a redrawn word cannot be told from Noctis' own
+                // text, and a redrawn word that is kept in such a line costs a little on
+                // every frame. So once the word has nothing left to play out it goes back
+                // to Noctis' text, still raised: the cell carries the two pixels from here on.
+                if (lineActive || !lineBlurred || playing || !_letters.IsQuiet) return busy;
+
+                // But only at a moment when the change cannot be seen: as the line ends,
+                // or while it travels (it has come back down by then, see LineReleaseSec;
+                // failing that, the next time a line starts). Nothing about a word that
+                // waits for that changes, so once it has settled it is not looked at again.
+                if (_sinceRelease > Tuning.HandBackSec && lineSpeed < Tuning.HandBackSpeed)
+                {
+                    _parked = !busy && _sinceRelease > Tuning.LineReleaseSec + 0.15;
+                    return busy;
+                }
+            }
+            else if (lineSpeed < Tuning.HandBackSpeed) return false;
+
+            _parked = false;
             _letters.Dispose();
             _letters = null;
             _lift = new Follower(9, 0.004);
@@ -503,6 +527,11 @@ internal sealed class LineRig : IDisposable
     /// <summary>How many lines have started since this one stopped being current.</summary>
     public int LinesSince { get; set; }
 
+    /// <summary>How fast the line is travelling across the window right now, in text heights per second.</summary>
+    public double Speed { get; private set; }
+
+    private Point? _at;
+
     public LineAccess Access { get; }
     public Control Container { get; }
 
@@ -590,13 +619,24 @@ internal sealed class LineRig : IDisposable
         // times whatever zoom Noctis shows its lyrics at (1.1 on the lyrics page). The
         // height a sung word rests at is a whole number of these.
         var pixelScale = top.RenderScaling;
+        Speed = 0;
         if (Container.TransformToVisual(top) is { } m && m.M11 > 0.05 && Math.Abs(m.M12) < 1e-4)
+        {
             pixelScale *= m.M11;
+            var at = new Point(m.M31, m.M32);
+            if (_at is { } before && dt > 0 && _words.Count > 0)
+            {
+                var dx = at.X - before.X;
+                var dy = at.Y - before.Y;
+                Speed = Math.Sqrt(dx * dx + dy * dy) / (_words[0].FontSize * m.M11 * dt);
+            }
+            _at = at;
+        }
 
         var blurred = !active && IsBlurred();
         var moving = false;
         foreach (var word in _words)
-            moving |= word.Step(dt, active, blurred, pixelScale, tuning);
+            moving |= word.Step(dt, active, blurred, Speed, pixelScale, tuning);
         return moving;
     }
 

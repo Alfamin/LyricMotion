@@ -1,7 +1,7 @@
 ﻿{
   "id": "dev.moshi.lyricmotion",
   "name": "Lyric Motion",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "author": "moshi",
   "description": "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.",
   "type": "dotnet",
