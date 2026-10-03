@@ -1,0 +1,6 @@
+# build output (the installable zip is kept as LyricMotion-for-Noctis.zip)
+dist/
+# the C# compiler (see README, "Building it") and scratch files
+tools/
+# local test bench: copies of Noctis, test songs, recordings
+test/

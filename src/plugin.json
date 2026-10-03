@@ -1,0 +1,63 @@
+﻿{
+  "id": "dev.moshi.lyricmotion",
+  "name": "Lyric Motion",
+  "version": "1.2.1",
+  "author": "moshi",
+  "description": "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.",
+  "type": "dotnet",
+  "entry": "LyricMotion.dll",
+  "entryType": "LyricMotion.LyricMotionPlugin",
+  "apiVersion": "1.1",
+  "minAppVersion": "1.5.3",
+  "permissions": [],
+  "settings": [
+    {
+      "key": "style",
+      "label": "Motion strength",
+      "type": "choice",
+      "choices": [
+        "Subtle",
+        "Balanced",
+        "Expressive"
+      ],
+      "default": "Balanced",
+      "description": "How far words float and grow, and how much held words grow and glow."
+    },
+    {
+      "key": "letterWave",
+      "label": "Letter by letter",
+      "type": "bool",
+      "default": true,
+      "description": "A word lights up and grows one letter at a time, with the highlight. Off: each word moves in one piece."
+    },
+    {
+      "key": "heldMs",
+      "label": "Held word starts at (ms)",
+      "type": "number",
+      "default": 600,
+      "min": 300,
+      "max": 2000,
+      "description": "A word sung at least this long counts as held: it grows more and glows. Lower = more words get the held-word treatment."
+    },
+    {
+      "key": "glow",
+      "label": "Glow",
+      "type": "bool",
+      "default": true,
+      "description": "Soft light behind a held word's letters; stronger the longer the word is held."
+    },
+    {
+      "key": "rtl",
+      "label": "Right-to-left lyrics",
+      "type": "bool",
+      "default": true,
+      "description": "Persian, Arabic, Hebrew and other right-to-left lyrics are detected automatically: words run from the right, lines sit against the right edge, and each word fills in from the right."
+    },
+    {
+      "key": "sidePanel",
+      "label": "Also animate the lyrics side panel",
+      "type": "bool",
+      "default": true
+    }
+  ]
+}
