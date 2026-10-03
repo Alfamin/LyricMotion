@@ -197,7 +197,7 @@ internal sealed class WordRig : IDisposable
         if (_inner is null || _base is null || _sweep is null) return;
         _letterAttempts++;
         var held = _durationMs >= tuning.HeldMs;
-        var split = tuning.LetterWave;
+        var split = tuning.LetterWave && (tuning.Flow || tuning.Grow(_durationMs, _isLast) >= Tuning.LetterGrowFloor);
         try
         {
             _letters = LetterLayer.TryCreate(_inner, _base, _sweep, _glow, tuning.Glow && held, split);
@@ -297,17 +297,17 @@ internal sealed class WordRig : IDisposable
         // 1 when it is back to its own size.
         var held = _durationMs >= tuning.HeldMs;
         var amount = tuning.Grow(_durationMs, _isLast);
-        var amountBefore = _beforeMs < 0 ? amount : tuning.Grow(_beforeMs, false);
-        var amountAfter = _afterMs < 0 ? amount : tuning.Grow(_afterMs, _afterIsLast);
+        var amountBefore = _beforeMs < 0 || !tuning.Flow ? amount : tuning.Grow(_beforeMs, false);
+        var amountAfter = _afterMs < 0 || !tuning.Flow ? amount : tuning.Grow(_afterMs, _afterIsLast);
         // The first letter starts to relax at settleStart, the last one a little later.
         var settleStart = Tuning.SettleStartSec(durationSec);
         var settleSec = Tuning.SettleSec(durationSec);
-        var settleSpread = _letters is not null && tuning.LetterWave ? Tuning.SettleSpreadSec(durationSec) : 0;
+        var settleSpread = _letters is not null && tuning.Flow ? Tuning.SettleSpreadSec(durationSec) : 0;
         var settle = Curves.Clamp01((_clock - settleStart - settleSpread) / settleSec);
 
         // How far the word has come up: with the fill, but never faster than a quick
         // word can be followed by the eye (it then finishes just after its note).
-        var riseSec = Math.Max(durationSec, Tuning.MinRiseSec);
+        var riseSec = tuning.RiseSec(durationSec);
         var arrive = progress > 0 ? Curves.Clamp01(_clock / riseSec) : 0;
 
         if (_letters is not null)
@@ -320,7 +320,7 @@ internal sealed class WordRig : IDisposable
             {
                 var busy = _letters.Step(dt, progress, reach, amount, amountBefore, amountAfter,
                     held ? tuning.HeldGlow(_durationMs, _isLast) : 0,
-                    _clock, settleStart, settleSpread, settleSec, lineKeep, arrive, durationSec, lineActive);
+                    _clock, settleStart, settleSpread, settleSec, tuning.Tail, tuning.LetterRise, lineKeep, arrive, durationSec, lineActive);
                 // Still coming up or playing out after the note, or fading with the line that was let go.
                 var grows = amount > 0 || amountBefore > 0 || amountAfter > 0;
                 var playing = _seen && progress >= 1 && (arrive < 1 || (grows && settle < 1 && lineKeep > 0));

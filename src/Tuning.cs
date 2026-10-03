@@ -9,6 +9,45 @@ namespace LyricMotion;
 /// </summary>
 internal sealed class Tuning
 {
+    /// <summary>How the motion gets from one word to the next.</summary>
+    public enum Handover
+    {
+        /// <summary>No motion at all: Noctis' own animation.</summary>
+        Off,
+        /// <summary>Every word is a step of its own, begun and finished inside its own note.</summary>
+        Crisp,
+        /// <summary>Every word is a step of its own, but its end runs a moment into the next word.</summary>
+        Smooth,
+        /// <summary>The motion passes along the line in one piece.</summary>
+        Flowing,
+    }
+
+    public Handover Animation { get; private init; } = Handover.Smooth;
+
+    /// <summary>False: the plugin moves nothing (right-to-left lyrics are still laid out).</summary>
+    public bool Motion => Animation != Handover.Off;
+
+    /// <summary>True: all words in letters, strength shared across word borders, release passing letter by letter.</summary>
+    public bool Flow => Animation == Handover.Flowing;
+
+    /// <summary>
+    /// How much of the band a letter comes up in is left standing past the end of its
+    /// word (see LetterLayer): 0 = the last letter is up exactly when the word is over,
+    /// 1 = it finishes at the pace of the letters in the middle of the word.
+    /// </summary>
+    public double Tail => Animation switch { Handover.Flowing => 1, Handover.Smooth => SmoothTail, _ => 0 };
+
+    /// <summary>The shortest time a letter takes to come up; 0 = exactly with the fill.</summary>
+    public double LetterRise => Animation switch { Handover.Flowing => LetterRiseSec, Handover.Smooth => SmoothRiseSec, _ => 0 };
+
+    /// <summary>The two numbers of the smooth word-by-word look: raise them for more overlap between words.</summary>
+    public const double SmoothTail = 0.5, SmoothRiseSec = 0.12;
+
+    /// <summary>How long a word in one piece takes to float up.</summary>
+    public double RiseSec(double durationSec) => Animation == Handover.Smooth
+        ? Math.Max(durationSec + Math.Min(0.2 * durationSec, 0.06), MinRiseSec + 0.02)
+        : Math.Max(durationSec, MinRiseSec);
+
     /// <summary>Overall strength: 0.7 subtle, 1 balanced, 1.4 expressive.</summary>
     public double Intensity { get; private init; } = 1.0;
 
@@ -140,8 +179,13 @@ internal sealed class Tuning
             _ => 1.0,
         };
 
+        var animation = (settings.GetString("animation") ?? "").Trim().ToLowerInvariant();
         return new Tuning
         {
+            Animation = animation.StartsWith("off") ? Handover.Off
+                : animation.StartsWith("flow") ? Handover.Flowing
+                : animation.Contains("crisp") ? Handover.Crisp
+                : Handover.Smooth,
             Intensity = intensity,
             LetterWave = settings.GetBool("letterWave", true),
             Glow = settings.GetBool("glow", true),

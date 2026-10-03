@@ -627,13 +627,15 @@ internal sealed class LetterLayer : IDisposable
     /// <param name="settleStart">When, on that clock, the word's first letter starts to relax.</param>
     /// <param name="settleSpread">How much later its last letter does.</param>
     /// <param name="settleSec">How long a letter takes to relax.</param>
+    /// <param name="tail">How much of a letter's band is left standing past the end of its word (0 to 1, see <see cref="Tuning.Tail"/>).</param>
+    /// <param name="riseFloor">The shortest time a letter takes to come up, in seconds; 0 = exactly with the fill.</param>
     /// <param name="lineKeep">1 while the line is current; runs to 0 as the line is let go.</param>
     /// <param name="arrive">For a word in one piece: 0 to 1 as it is sung (its rise, growth and glow follow it).</param>
     /// <param name="durationSec">How long the word is sung.</param>
     /// <param name="lineActive">True while the word's line is the current one.</param>
     /// <returns>True while a letter is still moving.</returns>
     public bool Step(double dt, double progress, double reach, double grow, double growBefore, double growAfter, double glowPeak,
-        double clock, double settleStart, double settleSpread, double settleSec,
+        double clock, double settleStart, double settleSpread, double settleSec, double tail, double riseFloor,
         double lineKeep, double arrive, double durationSec, bool lineActive)
     {
         var placing = Place(dt, lineActive);
@@ -665,7 +667,7 @@ internal sealed class LetterLayer : IDisposable
         // up while the next word has already begun. (The light does not: a word is fully
         // lit exactly when it is over.)
         var runOn = _first + (durationSec > 0 ? clock / durationSec : 1) * (_width - _first);
-        var most = dt / Tuning.LetterRiseSec;
+        var most = riseFloor > 0 ? dt / riseFloor : double.PositiveInfinity;
 
         var moving = false;
         var glowing = false;
@@ -700,15 +702,17 @@ internal sealed class LetterLayer : IDisposable
             }
 
             // The light is exactly the fill. The rise and the size start with it, on the
-            // note, and follow the same band, only never faster than the eye can follow
-            // and without being cut short where the word ends: across a run of quick
-            // words, and from one word to the next, the motion rolls on in one piece.
+            // note. In the crisp look they are the light: every word is finished when its
+            // note is. Otherwise they follow the same band, only never faster than the
+            // eye can follow and with the band left standing (in part or in full) where
+            // the word ends: the last letters of a word finish a moment into the next one.
             letter.Light = Curves.SmoothStep(0, 1, arrived);
             if (_whole) letter.Rise = Curves.SmootherStep(arrived);
+            else if (tail <= 0 && riseFloor <= 0) letter.Rise = letter.Light;
             else
             {
-                var want = before ? 0 : Curves.Clamp01((runOn + letter.Ahead - letter.X)
-                                                       / (letter.Width + letter.Ahead + BandBehindEm * FontSize));
+                var behind = letter.Behind + Curves.Clamp01(tail) * (BandBehindEm * FontSize - letter.Behind);
+                var want = before ? 0 : Curves.Clamp01((runOn + letter.Ahead - letter.X) / (letter.Width + letter.Ahead + behind));
                 if (!letter.MotionKnown)
                 {
                     letter.MotionKnown = true;
@@ -819,8 +823,8 @@ internal sealed class LetterLayer : IDisposable
     /// </summary>
     public void Rehearse()
     {
-        Step(1.0 / 240, 0.5, 1.5, 0.02, 0.03, 0.01, 0.2, 0.15, 0.6, 0.2, 1, 1, 0.5, 0.3, lineActive: false);
-        Step(1.0 / 240, 3, 1.5, 0.02, 0.03, 0.01, 0.2, 1.1, 0.6, 0.2, 1, 0.5, 1, 0.3, lineActive: false);
+        Step(1.0 / 240, 0.5, 1.5, 0.02, 0.03, 0.01, 0.2, 0.15, 0.6, 0.2, 1, 0.5, 0.12, 1, 0.5, 0.3, lineActive: false);
+        Step(1.0 / 240, 3, 1.5, 0.02, 0.03, 0.01, 0.2, 1.1, 0.6, 0.2, 1, 0.5, 0.12, 0.5, 1, 0.3, lineActive: false);
         using var scrap = new RenderTargetBitmap(new PixelSize(8, 8), new Vector(96, 96));
         using var context = scrap.CreateDrawingContext();
         Paint(context);

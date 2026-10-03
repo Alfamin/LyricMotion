@@ -6,9 +6,8 @@ lyrics move with the singing.
 - Each word floats up a little as it is sung and stays there until its line is over.
 - Its letters grow a touch, one after another, as the highlight reaches them, and shrink back, one
   after another, when the word is done.
-- The motion passes from one word to the next without a break: the last letters of a word are still
-  coming up when the next word starts, and where a word that grows a lot stands next to one that
-  does not, the letters at the border meet half-way.
+- How one word hands over to the next can be chosen: every word a step of its own (smooth or
+  crisp), or the motion passing along the line in one piece.
 - Held words (sung for 0.6 seconds or longer) grow more and get a soft glow, then settle gently.
 - Persian, Arabic, Hebrew and other right-to-left lyrics are noticed by themselves and laid out from
   the right: words run from the right, lines sit against the right edge, each word fills in from the
@@ -38,6 +37,7 @@ Made for Noctis 1.5.3 or newer; tested on 1.5.8 and 1.5.9 on Windows.
 
 | Setting | Default | What it does |
 |---|---|---|
+| Animation | Word by word (smooth) | Word by word: every word is a step of its own; smooth lets the end of a word run a moment into the next one, crisp finishes every word exactly on its note. Flowing: the motion passes along the line in one piece. Off: Noctis' own animation. |
 | Motion strength | Balanced | Subtle, Balanced or Expressive: how far words float and grow, and how much held words grow and glow. |
 | Letter by letter | on | A word lights up and grows one letter at a time, with the highlight. Off: each word moves in one piece. |
 | Held word starts at (ms) | 600 | A word sung at least this long counts as held: it grows more and glows. |

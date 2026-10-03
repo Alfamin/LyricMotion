@@ -1,9 +1,9 @@
 ﻿{
   "id": "dev.moshi.lyricmotion",
   "name": "Lyric Motion",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": "moshi",
-  "description": "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them, the motion passing from one word to the next without a break; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.",
+  "description": "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.",
   "type": "dotnet",
   "entry": "LyricMotion.dll",
   "entryType": "LyricMotion.LyricMotionPlugin",
@@ -11,6 +11,19 @@
   "minAppVersion": "1.5.3",
   "permissions": [],
   "settings": [
+    {
+      "key": "animation",
+      "label": "Animation",
+      "type": "choice",
+      "choices": [
+        "Word by word (smooth)",
+        "Word by word (crisp)",
+        "Flowing",
+        "Off"
+      ],
+      "default": "Word by word (smooth)",
+      "description": "Word by word: every word is a step of its own. Smooth lets the end of a word run a moment into the next one; crisp finishes every word exactly on its note. Flowing: the motion passes along the line in one piece. Off: Noctis' own animation."
+    },
     {
       "key": "style",
       "label": "Motion strength",

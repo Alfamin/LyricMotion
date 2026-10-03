@@ -8,7 +8,7 @@
 # microsoft.net.compilers.toolset 5.0.0 from nuget.org, unpacked there).
 param(
     [string]$Noctis = "$env:LOCALAPPDATA\Programs\Noctis",
-    [string]$Version = "1.3.0",
+    [string]$Version = "1.4.0",
     [string]$Compiler = ""
 )
 

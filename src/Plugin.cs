@@ -21,9 +21,9 @@ public sealed class LyricMotionPlugin : INoctisPlugin
     public PluginInfo Info { get; } = new(
         Id: "dev.moshi.lyricmotion",
         Name: "Lyric Motion",
-        Version: "1.3.0",
+        Version: "1.4.0",
         Author: "moshi",
-        Description: "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them, the motion passing from one word to the next without a break; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.");
+        Description: "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.");
 
     public void Initialize(IPluginHost host)
     {
@@ -127,7 +127,7 @@ internal sealed class Director : IDisposable
 
         // The side panel with its motion switched off still gets a surface: right-to-left
         // lyrics are turned round there too.
-        _surfaces[lines] = new Surface(this, lines, motion: () => Tuning.SidePanel || lines.Name != SidePanelListName);
+        _surfaces[lines] = new Surface(this, lines, motion: () => Tuning.Motion && (Tuning.SidePanel || lines.Name != SidePanelListName));
         UpdateScout();
     }
 
