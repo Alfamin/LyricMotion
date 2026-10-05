@@ -334,11 +334,11 @@ internal sealed class WordRig : IDisposable
                 // to Noctis' text, still raised: the cell carries the two pixels from here on.
                 if (lineActive || !lineBlurred || playing || !_letters.IsQuiet) return busy;
 
-                // But only at a moment when the change cannot be seen: as the line ends,
-                // or while it travels (it has come back down by then, see LineReleaseSec;
-                // failing that, the next time a line starts). Nothing about a word that
-                // waits for that changes, so once it has settled it is not looked at again.
-                if (_sinceRelease > Tuning.HandBackSec && lineSpeed < Tuning.HandBackSpeed)
+                // Switch only while the line travels. Blur starts before the scroll does:
+                // switching in that gap still changes the ink on a stationary line.
+                // The word comes down during the glide (see LineReleaseSec); if it misses
+                // that glide, it waits unchanged for the next one.
+                if (lineSpeed < Tuning.HandBackSpeed)
                 {
                     _parked = !busy && _sinceRelease > Tuning.LineReleaseSec + 0.15;
                     return busy;

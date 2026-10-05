@@ -161,11 +161,11 @@ internal sealed class Tuning
     /// <summary>
     /// A redrawn word of a finished line goes back to Noctis' own text only at a moment
     /// when the change cannot be seen (the two are never quite the same there: a few
-    /// percent in brightness, a fraction of a pixel in place): in the first moments
-    /// after the line has ended, when Noctis blurs it, or later while the line is
-    /// travelling at least this fast, in text heights per second. Never while it rests.
+    /// percent in brightness, a fraction of a pixel in place): while the line is
+    /// travelling at least this fast, in text heights per second. Blur alone does not
+    /// hide a switch before the scroll starts. Never switch while the line rests.
     /// </summary>
-    public const double HandBackSec = 0.05, HandBackSpeed = 1.5;
+    public const double HandBackSpeed = 1.5;
 
     public static Tuning From(IPluginSettings? settings)
     {
