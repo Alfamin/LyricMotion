@@ -169,7 +169,7 @@ internal sealed class Surface : IDisposable
                 var line = _lines.Items[i];
                 if (line is null) continue;
                 var access = LineAccess.For(line);
-                if (access is null) return;
+                if (access is null) continue;
                 // A line with words is being sung: not now. (The placeholder Noctis
                 // shows during an intro is a line too, and current, but has no words.)
                 if (access.IsActive(line) && (access.HasAnyWords?.Invoke(line) ?? true)) return;
@@ -245,7 +245,7 @@ internal sealed class Surface : IDisposable
             var line = _lines.Items[i];
             if (line is null) continue;
             var access = LineAccess.For(line);
-            if (access is null) return;
+            if (access is null) continue;
             if (!_wordSynced && (access.HasAnyWords?.Invoke(line) ?? false)) _wordSynced = true;
             if (!access.IsActive(line) || _rigs.ContainsKey(line)) continue;
             if (still && !_anyRightToLeft) continue;

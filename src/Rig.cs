@@ -244,6 +244,17 @@ internal sealed class WordRig : IDisposable
         var progress = _access.Progress(_word);
         var fontSize = _base?.FontSize ?? 46;
 
+        if (_letters is not null && _letters.IsBroken)
+        {
+            // It could not be painted: Noctis' text is back, and the word is not redrawn
+            // again (it is moved as a whole instead, see TryBuildLetters).
+            _letters.Dispose();
+            _letters = null;
+            _parked = false;
+            _letterAttempts = int.MaxValue / 2;
+            _lift = new Follower(9, 0.004);
+            _grow = new Follower(9, 0.00005);
+        }
         if (_letters is not null && (Math.Abs(_letters.FontSize - fontSize) > 0.01 || _letters.IsStale))
         {
             // The window was resized or the lyrics changed colour: what was drawn is stale.

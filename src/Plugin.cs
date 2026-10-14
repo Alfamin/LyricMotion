@@ -21,7 +21,7 @@ public sealed class LyricMotionPlugin : INoctisPlugin
     public PluginInfo Info { get; } = new(
         Id: "dev.moshi.lyricmotion",
         Name: "Lyric Motion",
-        Version: "1.4.1",
+        Version: "1.4.2",
         Author: "moshi",
         Description: "Smooth motion for word-synced lyrics: each word floats up as it is sung and its letters grow a touch as the highlight reaches them; held words grow more, glow, and settle gently. Persian, Arabic and Hebrew lyrics are laid out right to left.");
 
@@ -48,12 +48,14 @@ internal sealed class Director : IDisposable
 {
     private const string SidePanelListName = "PanelItemsControl";
     private const int MaxFailures = 3;
+    private const long FailureWindowMs = 10 * 60 * 1000;
 
     private readonly IPluginHost _host;
     private readonly Dictionary<ItemsControl, Surface> _surfaces = new();
     private readonly List<IDisposable> _hooks = new();
     private DispatcherTimer? _scout;
     private int _failures;
+    private long _failureWindowStart;
     private bool _disposed;
 
     public Director(IPluginHost host)
@@ -161,7 +163,14 @@ internal sealed class Director : IDisposable
         UpdateScout();
     });
 
-    private void OnSettingsChanged(object? sender, string key) => Guard(() =>
+    private void OnSettingsChanged(object? sender, string key)
+    {
+        // May arrive from another thread; the lyrics are only touched on the UI thread.
+        if (Dispatcher.UIThread.CheckAccess()) ApplySettings();
+        else Dispatcher.UIThread.Post(ApplySettings, DispatcherPriority.Render);
+    }
+
+    private void ApplySettings() => Guard(() =>
     {
         Tuning = ReadTuning();
         // Rebuild from scratch so the new settings apply to the line being sung too.
@@ -190,6 +199,14 @@ internal sealed class Director : IDisposable
         catch (Exception ex)
         {
             try { onFailure?.Invoke(); } catch { /* nothing more to do */ }
+            // Only errors close together add up: a one-off now and then, hours apart, must
+            // not switch the plugin off for the rest of the session.
+            var now = Environment.TickCount64;
+            if (_failures == 0 || now - _failureWindowStart > FailureWindowMs)
+            {
+                _failures = 0;
+                _failureWindowStart = now;
+            }
             _failures++;
             try { _host.Log($"error {_failures}/{MaxFailures}: {ex.GetType().Name}: {ex.Message}"); } catch { }
             if (_failures >= MaxFailures)

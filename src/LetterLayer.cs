@@ -90,7 +90,14 @@ internal sealed class LetterLayer : IDisposable
     {
         public LetterLayer? Owner;
 
-        public override void Render(DrawingContext context) => Owner?.Paint(context);
+        // Drawing runs inside Avalonia's render pass, outside every guard of the plugin: whatever
+        // goes wrong here stops at this door. The layer stops painting and its owner takes it
+        // down (see IsBroken), which gives the word back to Noctis.
+        public override void Render(DrawingContext context)
+        {
+            try { Owner?.Paint(context); }
+            catch { if (Owner is { } owner) owner.IsBroken = true; }
+        }
     }
 
     /// <summary>Where a letter grows from, as a share of its height: just above the baseline.</summary>
@@ -174,6 +181,9 @@ internal sealed class LetterLayer : IDisposable
     /// <summary>True when the lyrics colour has changed since the word was drawn: the owner rebuilds the layer.</summary>
     public bool IsStale { get; private set; }
 
+    /// <summary>True when painting the layer failed: it paints nothing from then on and the owner takes it down for good.</summary>
+    public bool IsBroken { get; private set; }
+
     private LetterLayer(Panel host, Canvas canvas, Painter painter, TextBlock @base, TextBlock sweep, TextBlock? colorSource,
         List<Letter> letters, double width, double fontSize, double top, Color foreground, bool whole, bool fromRight)
     {
@@ -219,7 +229,7 @@ internal sealed class LetterLayer : IDisposable
             while (each.MoveNext())
             {
                 var element = each.GetTextElement();
-                if (!string.IsNullOrWhiteSpace(element)) pieces.Add((each.ElementIndex, element.Length, element));
+                if (!string.IsNullOrWhiteSpace(element) && !IsInvisible(element)) pieces.Add((each.ElementIndex, element.Length, element));
             }
             if (pieces.Count > Tuning.MaxLetters) whole = true;
         }
@@ -839,6 +849,7 @@ internal sealed class LetterLayer : IDisposable
     /// </summary>
     private void Paint(DrawingContext context)
     {
+        if (IsBroken) return;
         var sheet = _sheet;
         using var smooth = context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.LowQuality });
         foreach (var letter in _letters)
@@ -914,6 +925,18 @@ internal sealed class LetterLayer : IDisposable
     internal static Color? SolidColor(IBrush? brush) => brush is ISolidColorBrush solid
         ? Color.FromArgb((byte)Math.Round(solid.Color.A * Math.Clamp(solid.Opacity, 0, 1)), solid.Color.R, solid.Color.G, solid.Color.B)
         : null;
+
+    /// <summary>
+    /// True for a piece of nothing but format characters (zero-width space, direction marks,
+    /// soft hyphen, word joiner): it has no width to hit-test and nothing to draw, so it is
+    /// left out like a space instead of making the whole word fail.
+    /// </summary>
+    private static bool IsInvisible(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+            if (CharUnicodeInfo.GetUnicodeCategory(rune.Value) != UnicodeCategory.Format) return false;
+        return true;
+    }
 
     private static bool IsSplittable(string text)
     {
