@@ -61,9 +61,6 @@ internal sealed class WordRig : IDisposable
 
     private LetterLayer? _letters;
     private int _letterAttempts;
-    // True for a redrawn word of a finished line that only waits to be handed back.
-    private bool _parked;
-
     /// <summary>How long a word is sung, in milliseconds (a word without a time of its own counts as an ordinary one).</summary>
     public static double DurationOf(object word, WordAccess access)
     {
@@ -250,7 +247,6 @@ internal sealed class WordRig : IDisposable
             // again (it is moved as a whole instead, see TryBuildLetters).
             _letters.Dispose();
             _letters = null;
-            _parked = false;
             _letterAttempts = int.MaxValue / 2;
             _lift = new Follower(9, 0.004);
             _grow = new Follower(9, 0.00005);
@@ -260,7 +256,6 @@ internal sealed class WordRig : IDisposable
             // The window was resized or the lyrics changed colour: what was drawn is stale.
             _letters.Dispose();
             _letters = null;
-            _parked = false;
             if (_letterAttempts < 1000) _letterAttempts = 0;
         }
         if (_letters is null && lineActive && progress > -1.5 && progress < 1) TryBuildLetters(tuning);
@@ -326,8 +321,8 @@ internal sealed class WordRig : IDisposable
             // The word is moved by its redrawn letters (or its one redrawn piece) alone;
             // the cell stays put, so nothing is redrawn while it moves.
             SetCell(0, 1);
-            if (lineActive) _parked = false;
-            if (!_parked)
+            if (lineActive) _letters.CancelRelease();
+            if (!_letters.Releasing)
             {
                 var busy = _letters.Step(dt, progress, reach, amount, amountBefore, amountAfter,
                     held ? tuning.HeldGlow(_durationMs, _isLast) : 0,
@@ -338,26 +333,12 @@ internal sealed class WordRig : IDisposable
                 if (grows && !lineActive && _sinceRelease < Tuning.LineReleaseSec + 0.05 && !_letters.IsQuiet) playing = true;
                 busy |= playing;
 
-                // A line that is over is dimmed and blurred by Noctis from its very first
-                // frame. Under that blur a redrawn word cannot be told from Noctis' own
-                // text, and a redrawn word that is kept in such a line costs a little on
-                // every frame. So once the word has nothing left to play out it goes back
-                // to Noctis' text, still raised: the cell carries the two pixels from here on.
-                if (lineActive || !lineBlurred || playing || !_letters.IsQuiet) return busy;
-
-                // Switch only while the line travels. Blur starts before the scroll does:
-                // switching in that gap still changes the ink on a stationary line.
-                // The word comes down during the glide (see LineReleaseSec); if it misses
-                // that glide, it waits unchanged for the next one.
-                if (lineSpeed < Tuning.HandBackSpeed)
-                {
-                    _parked = !busy && _sinceRelease > Tuning.LineReleaseSec + 0.15;
-                    return busy;
-                }
+                // Wait until the singing animation has finished, then blend the two
+                // renderers. Blur and scroll speed did not hide an instantaneous swap:
+                // their hinting differs, and disposing the rig later removed its lift.
+                if (lineActive || playing || !_letters.IsQuiet) return busy;
             }
-            else if (lineSpeed < Tuning.HandBackSpeed) return false;
-
-            _parked = false;
+            if (!_letters.Release(dt, reach)) return true;
             _letters.Dispose();
             _letters = null;
             _lift = new Follower(9, 0.004);
@@ -368,13 +349,11 @@ internal sealed class WordRig : IDisposable
         // its turn or was already sung when we got here (it simply rests, on the line
         // or at its full height), and, should Noctis' layout ever stop being what the
         // redrawing expects, the plain way of moving the cell itself.
-        // Once sung a word stays up, also after its line has ended: sliding every word
-        // back down while the line is already scrolling away and blurring made the end
-        // of a line restless. The two pixels are given back when the word is handed
-        // back to Noctis, lines later.
+        // Sung words stay up while their line is active. At handover they blend into
+        // native text at its resting baseline, so later cleanup has no offset to drop.
         double target = 0, growTarget = 0;
-        if (progress >= 1 && arrive >= 1) target = -reach;
-        else if (progress > 0)
+        if (lineActive && progress >= 1 && arrive >= 1) target = -reach;
+        else if (lineActive && progress > 0)
         {
             target = -reach * Curves.SmootherStep(arrive);
             if (!held && lineActive && progress < 1) growTarget = tuning.Swell * Tuning.SwellWeight(_durationMs) * Curves.Hill(progress);
@@ -434,6 +413,8 @@ internal sealed class WordRig : IDisposable
         if (_move.Y != lift) _move.Y = lift;
         if (_scale.ScaleX != scale) { _scale.ScaleX = scale; _scale.ScaleY = scale; }
     }
+
+    public bool IsAtRest => _letters is null && _move.Y == 0 && _scale.ScaleX == 1;
 
     public void Dispose()
     {
@@ -569,6 +550,7 @@ internal sealed class LineRig : IDisposable
 
     /// <summary>True for a line with no word timing: tracked only so it is not looked at again every frame.</summary>
     public bool IsEmpty => _words.Count == 0;
+    public bool IsAtRest => _words.All(word => word.IsAtRest);
 
     private LineRig(object line, LineAccess access, Control container, List<WordRig> words)
     {

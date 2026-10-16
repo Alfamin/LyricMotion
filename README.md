@@ -18,6 +18,11 @@ lyrics move with the singing.
 
 The plugin only adds motion. It never changes the lyrics, their timing or your music files.
 
+Version **1.4.3** fixes the finished-line handover: animated letters blend into Noctis's own
+text over 120 ms and return to its resting baseline together. Cleanup waits for that blend
+to finish, so a fast following line cannot cut it off or drop the previous line by a few
+pixels later. Seeking back into a line cancels its handover and resumes the word animation.
+
 It needs lyrics with a time for every word (for example an `.elrc` file next to the song). Songs
 with line-timed lyrics are shown by Noctis as before.
 [WordLyrics](https://github.com/Alfamin/WordLyrics) makes word-timed lyrics for a whole library.
@@ -31,7 +36,13 @@ with line-timed lyrics are shown by Noctis as before.
 
 To update, install the new zip the same way and restart Noctis.
 
-Made for Noctis 1.5.3 or newer; tested on 1.5.8 and 1.5.9 on Windows.
+Made for Noctis 1.5.3 or newer; built against plugin kit 1.1. The handover regression tests
+use the locally installed Noctis 1.6.3 rendering dependencies, with synthetic text and no audio.
+
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1` for the headless
+frame checks. They cover crisp/smooth/flowing, 80 ms and held words, 100% and 137.5% rendering,
+stationary lines, seeks, native opacity animation and unloading during a handover. Existing
+Roslyn, .NET and cached Avalonia.Headless are required; the test script downloads nothing.
 
 ## Settings
 

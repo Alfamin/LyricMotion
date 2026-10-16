@@ -303,12 +303,9 @@ internal sealed class Surface : IDisposable
                 var active = rig.Access.IsActive(rig.Line);
                 moving |= rig.Step(dt, active, top, tuning);
                 if (active) rig.LinesSince = 0;
-                // A finished line keeps its words where they are (sung words stay up) and
-                // is handed back to Noctis only two lines later, and then only once it is
-                // travelling: blurred and on the move, the two pixels it gives back
-                // cannot be seen. (A line that never moves again goes back a line later.)
-                else if (rig.LinesSince >= HandBackAfterLines
-                         && (rig.Speed >= Tuning.HandBackSpeed || rig.LinesSince > HandBackAfterLines)) _scratch.Add(rig);
+                // A short line can finish before the previous handover does. Do not
+                // dispose its transform or fade halfway through and cause another snap.
+                else if (rig.LinesSince >= HandBackAfterLines && rig.IsAtRest) _scratch.Add(rig);
             }
             foreach (var rig in _scratch)
             {

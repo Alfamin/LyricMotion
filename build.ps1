@@ -8,7 +8,7 @@
 # microsoft.net.compilers.toolset 5.0.0 from nuget.org, unpacked there).
 param(
     [string]$Noctis = "$env:LOCALAPPDATA\Programs\Noctis",
-    [string]$Version = "1.4.2",
+    [string]$Version = "1.4.3",
     [string]$Compiler = ""
 )
 
@@ -40,13 +40,13 @@ $refs = Get-ChildItem $Noctis -Filter *.dll | Where-Object {
 New-Item -ItemType Directory -Force $out | Out-Null
 $rsp = Join-Path $root "dist\build.rsp"
 @(
-    "-nologo", "-nostdlib+", "-noconfig", "-target:library", "-optimize+", "-deterministic+",
+    "-nologo", "-nostdlib+", "-target:library", "-optimize+", "-deterministic+",
     "-langversion:latest", "-nullable:enable", "-debug-", "-warnaserror-",
     "-out:`"$out\LyricMotion.dll`""
 ) + $refs + (Get-ChildItem (Join-Path $root "src") -Filter *.cs | ForEach-Object { "`"$($_.FullName)`"" }) |
     Set-Content -Encoding utf8 $rsp
 
-& $csc "@$rsp"
+& $csc -noconfig "@$rsp"
 if ($LASTEXITCODE -ne 0) { throw "Compilation failed." }
 
 Copy-Item (Join-Path $root "src\plugin.json") $out -Force

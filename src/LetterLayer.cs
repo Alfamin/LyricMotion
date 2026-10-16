@@ -171,6 +171,47 @@ internal sealed class LetterLayer : IDisposable
     private double _dim;
     private IBrush? _fillBrush;
     private bool _repaint;
+    private double _release = -1;
+    private readonly List<IDisposable> _fade = new();
+    private readonly TranslateTransform _releaseMove = new();
+    private double _releaseLift;
+
+    public bool Releasing => _release >= 0;
+
+    /// <summary>Blend a finished word back to native text instead of swapping its raster in one frame.</summary>
+    public bool Release(double dt, double lift)
+    {
+        if (!Releasing)
+        {
+            _release = 0;
+            _releaseLift = lift;
+            _canvas.RenderTransform = _releaseMove;
+            foreach (var handle in _hidden) handle.Dispose();
+            _hidden.Clear();
+        }
+        _release += dt;
+        var share = Curves.SmootherStep(_release / Tuning.LineHandoverSec);
+        _canvas.Opacity = 1 - share;
+        _releaseMove.Y = _releaseLift * share;
+        // Read the current native opacity with only our previous override removed.
+        // Noctis's binding and line fade stay installed and continue underneath it.
+        foreach (var handle in _fade) handle.Dispose();
+        _fade.Clear();
+        _fade.Add(_base.SetValue(Visual.OpacityProperty, _base.Opacity * share, BindingPriority.Animation)!);
+        _fade.Add(_sweep.SetValue(Visual.OpacityProperty, _sweep.Opacity * share, BindingPriority.Animation)!);
+        return _release >= Tuning.LineHandoverSec;
+    }
+
+    public void CancelRelease()
+    {
+        if (!Releasing) return;
+        foreach (var handle in _fade) handle.Dispose();
+        _fade.Clear();
+        _release = -1; _canvas.Opacity = 1; _canvas.RenderTransform = null; _releaseMove.Y = 0;
+        Hide(_base.SetValue(TextBlock.ForegroundProperty, Brushes.Transparent, BindingPriority.Animation));
+        Hide(_sweep.SetValue(TextBlock.ForegroundProperty, Brushes.Transparent, BindingPriority.Animation));
+        if (_colorSource is not null) Hide(_colorSource.SetValue(Visual.OpacityProperty, 0.0, BindingPriority.Animation));
+    }
 
     /// <summary>Font size the letter positions were measured at; the owner rebuilds the layer when it changes.</summary>
     public double FontSize { get; }
@@ -914,6 +955,8 @@ internal sealed class LetterLayer : IDisposable
 
     public void Dispose()
     {
+        foreach (var handle in _fade) handle.Dispose();
+        _fade.Clear();
         foreach (var handle in _hidden) handle.Dispose();
         _hidden.Clear();
         _painter.Owner = null;
